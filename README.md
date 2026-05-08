@@ -20,9 +20,9 @@ See [`lid-inhibit/README.md`](lid-inhibit/README.md) for full details.
 
 ### `wezterm-agents`
 
-Registers a `spawn_agent` tool (callable by the LLM) and a `/spawn` command (callable by the user) that run sub-agents in dedicated WezTerm tabs with git worktree isolation. Each agent gets its own branch so its edits never touch the working tree; a diff is captured and returned to the parent when the agent finishes.
+Registers a `spawn_agent` tool (callable by the LLM) and a `/spawn` command (callable by the user) that run sub-agents in dedicated WezTerm tabs. Each agent gets its own branch; a diff is captured and returned to the parent when the agent finishes.
 
-Requires WezTerm and a clean git working tree. The `/spawn` command offers to stash or commit dirty changes before spawning.
+Requires WezTerm.
 
 ---
 
