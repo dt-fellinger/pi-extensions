@@ -20,7 +20,7 @@
  *   "lid-inhibit: off"  - user has disabled the extension
  *   (nothing)           - enabled but no agent is active
  */
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { platform } from "node:os";
 import type { Inhibitor } from "./types.js";
 import { LinuxInhibitor } from "./linux.js";

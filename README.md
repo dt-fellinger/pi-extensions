@@ -26,6 +26,20 @@ Requires WezTerm.
 
 ---
 
+### `tool-profiler`
+
+Profiles every tool call to show which ones are driving context growth and model cost. Emits a live warning when a single call crosses a severity threshold, and exposes `/tool-stats` for a full breakdown.
+
+- **Scoring** — context impact (fraction of context window consumed) and estimated downstream cost, blended into a 0–1 severity score
+- **Factor tags** — `large-result`, `noisy-bash-output`, `broad-read-range`, and more
+- **Cross-session aggregate** — compact JSON that accumulates trends across sessions
+
+Commands: `/tool-stats`, `/tool-stats session`, `/tool-stats overall`, `/tool-stats tool <name>`
+
+See [`tool-profiler/README.md`](tool-profiler/README.md) for full details.
+
+---
+
 ## Adding a new extension
 
 Drop a `.ts` file in this directory (or a subdirectory with an `index.ts`) and run `/reload` in pi. See the [pi extensions docs](https://github.com/mariozechner/pi-coding-agent/blob/main/docs/extensions.md) for the full API.

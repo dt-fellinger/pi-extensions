@@ -1,0 +1,8 @@
+{
+  "name": "tool-profiler",
+  "version": "1.0.0",
+  "description": "Pi extension that profiles tool calls for context growth and model cost visibility",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

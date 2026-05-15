@@ -1,0 +1,6 @@
+# Cross-session aggregate — generated at runtime, do not commit
+aggregate.json
+aggregate.json.tmp
+
+# Node
+node_modules/
