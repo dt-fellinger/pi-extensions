@@ -175,8 +175,17 @@ describe("fallbackLabel", () => {
     assert.ok(label.includes("serviceName"), `got: ${label}`);
   });
 
+  it("uses context hint as primary label source", () => {
+    // Even though DQL has a filter value, the hint takes priority
+    const label = fallbackLabel(
+      'fetch bizevents | filter namespace=="security" | count()',
+      "How many findings are there in the security namespace?",
+    );
+    assert.ok(label.includes("findings") || label.includes("security"), `got: ${label}`);
+    assert.ok(label.length <= 30, `too long: ${label}`);
+  });
+
   it("uses context hint when DQL is generic", () => {
-    // Query has no filters, so hint words fill in the gap
     const label = fallbackLabel(
       "fetch bizevents | count()",
       "How many findings are there for namespace kube-system?",
@@ -193,17 +202,14 @@ describe("fallbackLabel", () => {
       'fetch bizevents | filter namespace=="security" | count()',
       "How many findings are there for namespace security?",
     );
-    // DQL-derived parts should be enough; label should be compact
-    assert.ok(label.includes("security"), `got: ${label}`);
+    assert.ok(label.includes("security") || label.includes("findings"), `got: ${label}`);
     assert.ok(label.length <= 30, `too long: ${label}`);
   });
 
-  it("never returns just the tenant name from a -e flag", () => {
-    // parser fix ensures 'zyn' is never passed as the query,
-    // but guard against it anyway
-    const label = fallbackLabel("fetch bizevents | filter namespace==\"production\"");
-    assert.notEqual(label, "zyn");
-    assert.ok(label.length > 3, `got: ${label}`);
+  it("falls back to DQL when no hint is available", () => {
+    const label = fallbackLabel('fetch bizevents | filter namespace=="production"');
+    assert.ok(label.includes("bizevents"), `got: ${label}`);
+    assert.ok(label.includes("production"), `got: ${label}`);
   });
 
   it("truncates gracefully at 30 chars", () => {

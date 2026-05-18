@@ -96,26 +96,49 @@ async function generateLabel(_job: LabelJob): Promise<string> {
 }
 
 /**
- * Deterministic fallback label derived from a DQL query string.
+ * Deterministic fallback label for a query node.
  *
- * Incorporates contextHint (the user's question that prompted the query)
- * to fill in meaning that the DQL alone can't provide.
- *
- * Strategy:
- *   1. Extract the fetch type, filter comparison values, and aggregation from DQL.
- *   2. If the result is still generic (only the fetch type), pull key nouns from
- *      the user's question to add specificity.
- *   3. Truncate to 30 characters.
+ * Priority:
+ *   1. User's question (contextHint) — most readable, always preferred.
+ *      Key nouns are extracted from the question and joined with the
+ *      fetch type and any aggregation keyword from the DQL.
+ *   2. DQL content — used only when no context hint is available.
+ *      Extracts fetch type, filter comparison values, and aggregation.
  */
 export function fallbackLabel(query: string, contextHint?: string): string {
   const q = query.trim();
-  const parts: string[] = [];
 
-  // What entity type is being fetched?
+  // Fetch type from DQL ("logs", "bizevents", "spans", etc.)
   const fetchMatch = q.match(/^fetch\s+(\w+)/i);
-  if (fetchMatch) parts.push(fetchMatch[1]!);
+  const fetchType = fetchMatch ? fetchMatch[1]! : null;
 
-  // Key filter comparison values (loglevel=="ERROR", namespace=="prod", etc.)
+  // Aggregation keyword from DQL
+  const aggregation =
+    /\bcount\s*\(/i.test(q) ? "count" :
+    /\btimeseries\b/i.test(q) ? "timeseries" :
+    /\bsummarize\b/i.test(q) ? "summarize" :
+    null;
+
+  if (contextHint) {
+    // Build label from the user's question first.
+    const hintWords = extractHintKeywords(contextHint);
+    const parts: string[] = [];
+    if (fetchType) parts.push(fetchType);
+    for (const word of hintWords) {
+      if (!parts.includes(word)) parts.push(word);
+      if (parts.length >= 4) break;
+    }
+    if (aggregation && !parts.includes(aggregation)) parts.push(aggregation);
+    if (parts.length > 0) {
+      const label = parts.join(" ");
+      return label.length <= 30 ? label : label.slice(0, 27) + "...";
+    }
+  }
+
+  // No context hint — fall back to DQL-derived content.
+  const parts: string[] = [];
+  if (fetchType) parts.push(fetchType);
+
   const filterRe = /\bfilter\b[^|]*?==\s*["']?([A-Za-z0-9_:./\-]+)["']?/gi;
   let m: RegExpExecArray | null;
   // biome-ignore lint: iterating regex matches
@@ -124,28 +147,10 @@ export function fallbackLabel(query: string, contextHint?: string): string {
     if (val && !parts.includes(val)) parts.push(val);
   }
 
-  // Aggregation / transformation keywords
-  if (/\bcount\s*\(/i.test(q)) parts.push("count");
-  else if (/\bsummarize\b/i.test(q)) parts.push("summarize");
-  else if (/\btimeseries\b/i.test(q)) parts.push("timeseries");
+  if (aggregation) parts.push(aggregation);
 
-  // Group-by column (by X)
   const byMatch = q.match(/\bby\s+([\w.]+)/i);
   if (byMatch && parts.length < 5) parts.push(`by ${byMatch[1]}`);
-
-  // Count how many specific filter values we extracted (everything after the first
-  // fetch-type entry). If none, the label is still generic, so pull key nouns from
-  // the user's question to add context.
-  const filterValueCount = parts.filter(
-    (p) => p !== parts[0] && !/(^count$|^summarize$|^timeseries$|^by )/.test(p),
-  ).length;
-  if (filterValueCount === 0 && contextHint) {
-    const hintWords = extractHintKeywords(contextHint);
-    for (const word of hintWords) {
-      if (!parts.includes(word)) parts.push(word);
-      if (parts.length >= 4) break;
-    }
-  }
 
   if (parts.length > 0) {
     const label = parts.join(" ");
