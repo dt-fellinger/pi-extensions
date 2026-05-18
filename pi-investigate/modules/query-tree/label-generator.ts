@@ -21,6 +21,7 @@ export type LabelCallback = (label: string, state: "ready" | "fallback") => void
 interface LabelJob {
   currentQuery: string;
   previousQuery: string | null;
+  contextHint: string | undefined;
   callback: LabelCallback;
 }
 
@@ -28,18 +29,18 @@ let activeCount = 0;
 const queue: LabelJob[] = [];
 
 /**
- * Request a label for a query node. The callback is called asynchronously
- * with either an AI-generated label ("ready") or a fallback ("fallback").
+ * Request a label for a query node.
  *
- * The caller should initially set labelState to "pending" and update the
- * node when the callback fires.
+ * contextHint is the text of the user's message that prompted the query.
+ * It is incorporated into the fallback label when the DQL alone is ambiguous.
  */
 export function requestLabel(
   currentQuery: string,
   previousQuery: string | null,
+  contextHint: string | undefined,
   callback: LabelCallback,
 ): void {
-  const job: LabelJob = { currentQuery, previousQuery, callback };
+  const job: LabelJob = { currentQuery, previousQuery, contextHint, callback };
 
   if (activeCount < MAX_CONCURRENT) {
     runJob(job);
@@ -47,7 +48,7 @@ export function requestLabel(
     queue.push(job);
   } else {
     // Queue full — use fallback immediately.
-    callback(fallbackLabel(currentQuery), "fallback");
+    callback(fallbackLabel(currentQuery, contextHint), "fallback");
   }
 }
 
@@ -57,7 +58,7 @@ async function runJob(job: LabelJob): Promise<void> {
     const label = await withTimeout(generateLabel(job), TIMEOUT_MS);
     job.callback(label, "ready");
   } catch {
-    job.callback(fallbackLabel(job.currentQuery), "fallback");
+    job.callback(fallbackLabel(job.currentQuery, job.contextHint), "fallback");
   } finally {
     activeCount--;
     const next = queue.shift();
@@ -97,18 +98,16 @@ async function generateLabel(_job: LabelJob): Promise<string> {
 /**
  * Deterministic fallback label derived from a DQL query string.
  *
- * Extracts the fetch type, key filter values, and any aggregation keyword
- * to produce a short but meaningful description.
+ * Incorporates contextHint (the user's question that prompted the query)
+ * to fill in meaning that the DQL alone can't provide.
  *
- * Examples:
- *   "fetch logs | filter loglevel==\"ERROR\" | filter service==\"checkout\""
- *     → "logs ERROR checkout"
- *   "fetch bizevents | filter namespace==\"prod\" | count()"
- *     → "bizevents prod count"
- *   "fetch spans | summarize count() by serviceName"
- *     → "spans by serviceName"
+ * Strategy:
+ *   1. Extract the fetch type, filter comparison values, and aggregation from DQL.
+ *   2. If the result is still generic (only the fetch type), pull key nouns from
+ *      the user's question to add specificity.
+ *   3. Truncate to 30 characters.
  */
-export function fallbackLabel(query: string): string {
+export function fallbackLabel(query: string, contextHint?: string): string {
   const q = query.trim();
   const parts: string[] = [];
 
@@ -134,6 +133,20 @@ export function fallbackLabel(query: string): string {
   const byMatch = q.match(/\bby\s+([\w.]+)/i);
   if (byMatch && parts.length < 5) parts.push(`by ${byMatch[1]}`);
 
+  // Count how many specific filter values we extracted (everything after the first
+  // fetch-type entry). If none, the label is still generic, so pull key nouns from
+  // the user's question to add context.
+  const filterValueCount = parts.filter(
+    (p) => p !== parts[0] && !/(^count$|^summarize$|^timeseries$|^by )/.test(p),
+  ).length;
+  if (filterValueCount === 0 && contextHint) {
+    const hintWords = extractHintKeywords(contextHint);
+    for (const word of hintWords) {
+      if (!parts.includes(word)) parts.push(word);
+      if (parts.length >= 4) break;
+    }
+  }
+
   if (parts.length > 0) {
     const label = parts.join(" ");
     return label.length <= 30 ? label : label.slice(0, 27) + "...";
@@ -145,4 +158,25 @@ export function fallbackLabel(query: string): string {
   const truncated = beforePipe.slice(0, 30);
   const lastSpace = truncated.lastIndexOf(" ");
   return lastSpace > 10 ? truncated.slice(0, lastSpace) : truncated;
+}
+
+/**
+ * Extract meaningful keywords from a user's question for use in labels.
+ * Strips stopwords and short words.
+ */
+function extractHintKeywords(hint: string): string[] {
+  const STOPWORDS = new Set([
+    "a", "an", "the", "and", "or", "for", "in", "of", "to", "is", "are",
+    "how", "many", "what", "which", "where", "when", "show", "get", "find",
+    "list", "give", "me", "us", "can", "do", "does", "there", "by", "with",
+    "from", "that", "this", "all", "any", "have", "has", "been", "be", "on",
+    "query", "fetch", "run", "execute", "using", "check", "look", "please",
+  ]);
+
+  return hint
+    .toLowerCase()
+    .replace(/[^a-z0-9\s\-_.]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+    .slice(0, 5);
 }

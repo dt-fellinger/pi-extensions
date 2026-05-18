@@ -138,7 +138,28 @@ function tryParseJson(text: string): unknown {
 }
 
 function parseJsonOutput(parsed: unknown): ParsedOutput {
-  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  // Unwrap common DQL API wrapper shapes:
+  //   { records: [...] }  — standard Grail DQL response
+  //   { results: [...] }  — some API variants
+  //   { data: [...] }     — generic wrapper
+  let arr: unknown[];
+  if (Array.isArray(parsed)) {
+    arr = parsed;
+  } else if (parsed !== null && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    const unwrapped =
+      (Array.isArray(obj["records"]) && obj["records"]) ||
+      (Array.isArray(obj["results"]) && obj["results"]) ||
+      (Array.isArray(obj["data"]) && obj["data"]);
+    if (unwrapped) {
+      arr = unwrapped as unknown[];
+    } else {
+      // Single object — treat as one row.
+      arr = [parsed];
+    }
+  } else {
+    arr = [parsed];
+  }
   if (arr.length === 0) {
     return { columns: [], rows: [], recordCount: 0, confidence: "high" };
   }

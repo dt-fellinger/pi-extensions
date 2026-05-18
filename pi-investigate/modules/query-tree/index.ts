@@ -14,6 +14,28 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Pull the most recent user message text from the session branch. */
+function extractLastUserMessage(ctx: ExtensionContext): string | undefined {
+  const branch = ctx.sessionManager.getBranch();
+  for (let i = branch.length - 1; i >= 0; i--) {
+    const entry = branch[i]!;
+    if (entry.type !== "message") continue;
+    const msg = entry.message;
+    if (msg.role !== "user") continue;
+    const text = msg.content
+      .filter((c: { type: string }) => c.type === "text")
+      .map((c: { type: string; text?: string }) => c.text ?? "")
+      .join(" ")
+      .trim();
+    if (text) return text.slice(0, 200);
+  }
+  return undefined;
+}
 import { isToolCallEventType, isBashToolResult } from "@earendil-works/pi-coding-agent";
 import type {
   InvestigateConfig,
@@ -111,10 +133,10 @@ export function initQueryTreeModule(
   );
 
   // Listen for bash tool calls and results.
-  pi.on("tool_call", async (event) => {
+  pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
-    const branchHint = undefined; // Could derive from session branch later.
-    tracker.onToolCall(event.toolCallId, event.input.command ?? "", branchHint);
+    const contextHint = extractLastUserMessage(ctx);
+    tracker.onToolCall(event.toolCallId, event.input.command ?? "", contextHint);
   });
 
   pi.on("tool_result", async (event) => {

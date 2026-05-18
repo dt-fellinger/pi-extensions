@@ -27,7 +27,7 @@ interface PendingQuery {
   fileQuery: boolean;
   queryFile?: string;
   parentNodeId: string | null;
-  branchHint: string | undefined;
+  contextHint: string | undefined;
   startedAt: number;
 }
 
@@ -53,7 +53,7 @@ export class QueryTreeTracker {
    * Called from tool_call. Records a pending query if the bash command is
    * a supported dtctl query invocation.
    */
-  onToolCall(toolCallId: string, command: string, branchHint?: string): void {
+  onToolCall(toolCallId: string, command: string, contextHint?: string): void {
     const detected = detectDtctlQuery(command);
     if (!detected) return;
 
@@ -63,7 +63,7 @@ export class QueryTreeTracker {
       fileQuery: detected.fileQuery,
       queryFile: detected.queryFile,
       parentNodeId: this.selectedNodeId,
-      branchHint,
+      contextHint,
       startedAt: Date.now(),
     });
   }
@@ -189,7 +189,7 @@ export class QueryTreeTracker {
 
     // Request a label asynchronously.
     const previousQuery = this.findPreviousQuery(pending.parentNodeId);
-    requestLabel(query || "manual marker", previousQuery, (label, labelState) => {
+    requestLabel(query || "manual marker", previousQuery, pending.contextHint, (label, labelState) => {
       this.updateNodeLabel(nodeId, label, labelState);
     });
   }

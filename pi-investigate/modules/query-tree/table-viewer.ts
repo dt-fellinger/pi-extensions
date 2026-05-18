@@ -117,14 +117,14 @@ export class TableViewer {
     let result = [...this.rows];
     if (this.searchText) {
       const q = this.searchText.toLowerCase();
-      result = result.filter((r) => r.some((v) => String(v ?? "").toLowerCase().includes(q)));
+      result = result.filter((r) => r.some((v) => formatCell(v).toLowerCase().includes(q)));
     }
     if (this.sortCol !== null) {
       const col = this.sortCol;
       const asc = this.sortAsc;
       result.sort((a, b) => {
-        const av = String(a[col] ?? "");
-        const bv = String(b[col] ?? "");
+        const av = formatCell(a[col]);
+        const bv = formatCell(b[col]);
         return asc ? av.localeCompare(bv) : bv.localeCompare(av);
       });
     }
@@ -172,7 +172,7 @@ export class TableViewer {
     for (const row of dataRows) {
       const cells = visibleCols.map((_, i) => {
         const absIdx = i + this.scrollCol;
-        const val = String(row[absIdx] ?? "");
+        const val = formatCell(row[absIdx]);
         return truncateToWidth(val.padEnd(colWidth - 1), colWidth - 1);
       });
       lines.push(" " + cells.join(th.fg("borderMuted", "|")));
@@ -225,4 +225,25 @@ export class TableViewer {
 
   invalidate(): void {}
   dispose(): void {}
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a cell value for display.
+ * Nested objects and arrays are compactly JSON-stringified rather than
+ * producing the useless "[object Object]" default.
+ */
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
 }

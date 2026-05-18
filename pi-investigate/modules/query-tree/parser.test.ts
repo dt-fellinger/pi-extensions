@@ -175,6 +175,29 @@ describe("fallbackLabel", () => {
     assert.ok(label.includes("serviceName"), `got: ${label}`);
   });
 
+  it("uses context hint when DQL is generic", () => {
+    // Query has no filters, so hint words fill in the gap
+    const label = fallbackLabel(
+      "fetch bizevents | count()",
+      "How many findings are there for namespace kube-system?",
+    );
+    assert.ok(label.includes("bizevents"), `got: ${label}`);
+    assert.ok(
+      label.includes("findings") || label.includes("kube-system") || label.includes("namespace"),
+      `expected hint words in label, got: ${label}`,
+    );
+  });
+
+  it("does not use hint when DQL already has specific filter values", () => {
+    const label = fallbackLabel(
+      'fetch bizevents | filter namespace=="security" | count()',
+      "How many findings are there for namespace security?",
+    );
+    // DQL-derived parts should be enough; label should be compact
+    assert.ok(label.includes("security"), `got: ${label}`);
+    assert.ok(label.length <= 30, `too long: ${label}`);
+  });
+
   it("never returns just the tenant name from a -e flag", () => {
     // parser fix ensures 'zyn' is never passed as the query,
     // but guard against it anyway
