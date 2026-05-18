@@ -17,11 +17,9 @@ At any point you can open the tree overlay with `/inv tree` (or `Ctrl+T`) to see
 
 ## Getting started
 
-### Step 1: Reload the extension
+Start a pi session — you should see `inv: idle` in the footer status bar once the extension loads.
 
-Run `/reload` inside a running pi session. You should see `inv: idle` appear in the footer status bar.
-
-### Step 2: Run a DQL query through the agent
+### Step 1: Run a DQL query through the agent
 
 Ask the agent to run a query — for example:
 
@@ -29,7 +27,7 @@ Ask the agent to run a query — for example:
 
 The agent will call `dtctl query "fetch logs | filter loglevel==\"ERROR\" | filter service==\"checkout\" | limit 100" -o json --plain`. The moment that succeeds, the footer updates to `inv: 1 query`.
 
-### Step 3: Run a follow-up query
+### Step 2: Run a follow-up query
 
 Continue the investigation:
 
@@ -37,7 +35,7 @@ Continue the investigation:
 
 The agent runs another query. The footer shows `inv: 2 queries`. The second query is automatically attached as a child of the first in the tree.
 
-### Step 4: Open the tree overlay
+### Step 3: Open the tree overlay
 
 Type `/inv tree` (or press `Ctrl+T` when the agent is idle). You'll see something like:
 
@@ -55,7 +53,7 @@ Type `/inv tree` (or press `Ctrl+T` when the agent is idle). You'll see somethin
 
 Navigate with arrow keys. Press `q` to toggle the preview pane. Press `Enter` to select a node and choose what to do with it.
 
-### Step 5: Add a manual marker
+### Step 4: Add a manual marker
 
 When you want to bookmark a moment in the investigation without running a query, use:
 
@@ -65,7 +63,7 @@ When you want to bookmark a moment in the investigation without running a query,
 
 The marker appears in the tree as a sibling of the currently selected node.
 
-### Step 6: Open the table viewer
+### Step 5: Open the table viewer
 
 Select a node in the tree overlay and choose **Open table viewer**. This opens a full-screen view of the query results:
 
@@ -83,7 +81,7 @@ Select a node in the tree overlay and choose **Open table viewer**. This opens a
 
 Press `e`, `j`, or `t` to export to CSV, JSON, or TSV. The file is written to `~/Downloads/`.
 
-### Step 7: Navigate to a session entry
+### Step 6: Navigate to a session entry
 
 Select a node in the tree overlay and choose **Jump to session entry**. Pi navigates its session tree to the point where that query result was captured — useful for picking up a branch of the investigation you abandoned earlier.
 
