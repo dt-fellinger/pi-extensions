@@ -37,7 +37,7 @@ The agent runs another query. The footer shows `inv: 2 queries`. The second quer
 
 ### Step 3: Open the tree overlay
 
-Type `/inv tree` (or press `Ctrl+T` when the agent is idle). You'll see something like:
+Type `/inv tree` (or press `Ctrl+I` when the agent is idle). You'll see something like:
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────╮
@@ -93,7 +93,7 @@ Select a node in the tree overlay and choose **Jump to session entry**. Pi navig
 | `/inv mark [label]` | Add a manual marker at the current investigation cursor |
 | `/inv cleanup` | Remove orphaned cache files from disk |
 
-**Shortcut:** `Ctrl+T` — opens the tree when the agent is idle. Because pi doesn't yet expose direct command invocation from shortcuts, this works by sending `/inv tree` as a queued user message.
+**Shortcut:** `Ctrl+I` — opens the tree when the agent is idle. Because pi doesn't yet expose direct command invocation from shortcuts, this works by sending `/inv tree` as a queued user message.
 
 ## Tree overlay keys
 

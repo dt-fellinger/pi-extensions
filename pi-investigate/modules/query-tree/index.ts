@@ -177,8 +177,8 @@ export function registerQueryTreeCommands(
     },
   });
 
-  // Ctrl+T shortcut — open tree when idle.
-  pi.registerShortcut("ctrl+t", {
+  // ctrl+i — open investigation tree (ctrl+t is reserved by pi for thinking toggle).
+  pi.registerShortcut("ctrl+i", {
     description: "Open investigation query tree",
     handler: async (ctx) => {
       if (ctx.isIdle()) {
