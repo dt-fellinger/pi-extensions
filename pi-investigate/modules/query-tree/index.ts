@@ -330,9 +330,9 @@ async function runDebug(
   // Step 1: what model was resolved?
   const cached = getLabelModelInfo();
   if (cached) {
-    lines.push(`✓ Cached model: ${cached.modelId}`);
-    lines.push(`  api:     ${cached.api}`);
-    lines.push(`  baseUrl: ${cached.baseUrl}`);
+    lines.push(`✓ Cached model: ${cached.model.id}`);
+    lines.push(`  api:     ${cached.model.api}`);
+    lines.push(`  baseUrl: ${cached.model.baseUrl}`);
     lines.push(`  apiKey:  ${cached.apiKey ? `set (${cached.apiKey.slice(0, 8)}...)` : "not set"}`);
     lines.push(`  headers: ${cached.headers ? JSON.stringify(Object.keys(cached.headers)) : "none"}`);
   } else {
@@ -350,7 +350,7 @@ async function runDebug(
   if (!fresh) {
     lines.push("✗ No model available — check that at least one provider is configured");
   } else {
-    lines.push(`✓ Resolved: ${fresh.modelId} (${fresh.api})`);
+    lines.push(`✓ Resolved: ${fresh.model.id} (${fresh.model.api})`);
 
     // Step 3: make a live test call
     lines.push("");

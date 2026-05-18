@@ -8,7 +8,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { detectDtctlQuery, parseQueryOutput } from "./parser.js";
-import { fallbackLabel } from "./label-generator.js";
+
+// fallbackLabel is tested separately in label-fallback.test.ts to avoid
+// pulling in @earendil-works/pi-ai (unavailable outside pi's runtime).
+import { fallbackLabel } from "./label-fallback.js";
 
 // ---------------------------------------------------------------------------
 // Command detection
