@@ -40,6 +40,22 @@ See [`tool-profiler/README.md`](tool-profiler/README.md) for full details.
 
 ---
 
+### `pi-investigate`
+
+An investigation workbench that tracks every `dtctl` DQL query the agent runs as a navigable tree. Captures query results automatically, stores a full result cache on disk, and generates short labels summarising what changed between queries.
+
+- **Query Tree** — session-persistent tree of all DQL queries with parent-child branching
+- **Tree overlay** — `/inv tree` or `Ctrl+T` to open; navigate, search, filter to active branch
+- **Table viewer** — full-screen result view with sort, search, and CSV/JSON/TSV export
+- **Manual markers** — `/inv mark [label]` to bookmark moments without running a query
+- **Auto-reconstruction** — tree rebuilds on session resume and branch navigation
+
+Commands: `/inv tree`, `/inv mark`, `/inv cleanup`
+
+See [`pi-investigate/README.md`](pi-investigate/README.md) for a step-by-step getting started guide.
+
+---
+
 ## Adding a new extension
 
 Drop a `.ts` file in this directory (or a subdirectory with an `index.ts`) and run `/reload` in pi. See the [pi extensions docs](https://github.com/mariozechner/pi-coding-agent/blob/main/docs/extensions.md) for the full API.
