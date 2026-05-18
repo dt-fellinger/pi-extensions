@@ -153,7 +153,10 @@ async function generateLabel(job: LabelJob): Promise<string> {
 // ---------------------------------------------------------------------------
 
 async function callAnthropic(info: LabelModelInfo, prompt: string): Promise<string> {
-  const response = await fetch(`${info.baseUrl}/messages`, {
+  // pi's built-in baseUrl for Anthropic is "https://api.anthropic.com" (no /v1).
+  // The messages endpoint lives at /v1/messages.
+  const url = `${info.baseUrl}/v1/messages`;
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
