@@ -66,8 +66,8 @@ export default function (pi: ExtensionAPI) {
   // ---------------------------------------------------------------------------
 
   if (config.modules["query-tree"].enabled) {
-    const { tracker, resetLabelModel } = initQueryTreeModule(pi, state, events, config);
-    registerQueryTreeCommands(pi, state, events, config, tracker);
+    const { tracker, resetLabelModel, getLabelModelInfo } = initQueryTreeModule(pi, state, events, config);
+    registerQueryTreeCommands(pi, state, events, config, tracker, getLabelModelInfo);
     // Reset cached model selection at the start of each session so credential
     // changes are picked up without requiring a full restart.
     pi.on("session_start", async () => resetLabelModel());

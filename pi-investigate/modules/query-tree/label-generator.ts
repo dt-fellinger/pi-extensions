@@ -279,6 +279,27 @@ function buildPrompt(job: LabelJob): string {
   return lines.join("\n");
 }
 
+/** Run a live label generation test and return the result or error message. */
+export async function testLabelCall(
+  modelInfo: LabelModelInfo,
+  testQuery = "fetch events | filter event.type == \"SECURITY_FINDING\" | limit 10",
+  testHint = "show me security findings",
+): Promise<{ label: string; source: "model" | "error"; error?: string }> {
+  const job = {
+    currentQuery: testQuery,
+    previousQuery: null,
+    contextHint: testHint,
+    modelInfo,
+    callback: () => {},
+  };
+  try {
+    const label = await generateLabel(job);
+    return { label, source: "model" };
+  } catch (e) {
+    return { label: fallbackLabel(testQuery, testHint), source: "error", error: String(e) };
+  }
+}
+
 function sanitizeLabel(raw: string): string {
   return raw
     .replace(/^["'`*\-]+|["'`*\-]+$/g, "")

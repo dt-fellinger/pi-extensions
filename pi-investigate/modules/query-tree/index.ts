@@ -48,7 +48,7 @@ import { QueryTreeTracker } from "./tracker.js";
 import { TreeOverlay } from "./tree-overlay.js";
 import { TableViewer } from "./table-viewer.js";
 import { cleanupOrphanedCache } from "./result-store.js";
-import { resolveLabelModel } from "./label-generator.js";
+import { resolveLabelModel, testLabelCall, type LabelModelInfo } from "./label-generator.js";
 
 const ENTRY_TYPE = "investigate:query-tree:node";
 
@@ -167,7 +167,7 @@ export function initQueryTreeModule(
     labelModelInfo = null;
   };
 
-  return { tracker, resetLabelModel };
+  return { tracker, resetLabelModel, getLabelModelInfo: () => labelModelInfo };
 }
 
 export function registerQueryTreeCommands(
@@ -176,6 +176,7 @@ export function registerQueryTreeCommands(
   events: InvestigateEventBus,
   config: InvestigateConfig,
   tracker: QueryTreeTracker,
+  getLabelModelInfo: () => import("./label-generator.js").LabelModelInfo | null,
 ): void {
   pi.registerCommand("inv", {
     description: "Investigation workbench — /inv tree | mark | cleanup",
@@ -200,6 +201,10 @@ export function registerQueryTreeCommands(
           break;
         }
 
+        case "debug":
+          await runDebug(ctx, getLabelModelInfo);
+          break;
+
         case "cleanup": {
           const knownIds = new Set(state.nodes.keys());
           const cacheDir = resolveCacheDir(config);
@@ -210,7 +215,7 @@ export function registerQueryTreeCommands(
 
         default:
           ctx.ui.notify(
-            "Usage: /inv tree | /inv mark [label] | /inv cleanup",
+            "Usage: /inv tree | /inv mark [label] | /inv cleanup | /inv debug",
             "info",
           );
       }
@@ -310,4 +315,54 @@ async function openTreeOverlay(
         new TableViewer(node, theme, config, state.sessionId, done),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Debug helper
+// ---------------------------------------------------------------------------
+
+async function runDebug(
+  ctx: ExtensionCommandContext,
+  getLabelModelInfo: () => LabelModelInfo | null,
+): Promise<void> {
+  const lines: string[] = ["── pi-investigate debug ──────────────────"];
+
+  // Step 1: what model was resolved?
+  const cached = getLabelModelInfo();
+  if (cached) {
+    lines.push(`✓ Cached model: ${cached.modelId}`);
+    lines.push(`  api:     ${cached.api}`);
+    lines.push(`  baseUrl: ${cached.baseUrl}`);
+    lines.push(`  apiKey:  ${cached.apiKey ? `set (${cached.apiKey.slice(0, 8)}...)` : "not set"}`);
+    lines.push(`  headers: ${cached.headers ? JSON.stringify(Object.keys(cached.headers)) : "none"}`);
+  } else {
+    lines.push("✗ No model cached yet — resolve on next dtctl query");
+  }
+
+  // Step 2: try resolving fresh from the registry
+  lines.push("");
+  lines.push("Resolving from model registry...");
+  const fresh = await resolveLabelModel(ctx.modelRegistry).catch((e: unknown) => {
+    lines.push(`✗ resolveLabelModel threw: ${e}`);
+    return null;
+  });
+
+  if (!fresh) {
+    lines.push("✗ No model available — check that at least one provider is configured");
+  } else {
+    lines.push(`✓ Resolved: ${fresh.modelId} (${fresh.api})`);
+
+    // Step 3: make a live test call
+    lines.push("");
+    lines.push("Making test label call...");
+    const result = await testLabelCall(fresh);
+    if (result.source === "model") {
+      lines.push(`✓ Label from model: "${result.label}"`);
+    } else {
+      lines.push(`✗ Model call failed: ${result.error}`);
+      lines.push(`  Fallback label:   "${result.label}"`);
+    }
+  }
+
+  ctx.ui.notify(lines.join("\n"), "info");
 }
