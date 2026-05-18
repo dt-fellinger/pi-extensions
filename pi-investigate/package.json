@@ -1,0 +1,8 @@
+{
+  "name": "pi-investigate",
+  "version": "0.1.0",
+  "description": "Investigation workbench for Pi — Query Tree and more",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
