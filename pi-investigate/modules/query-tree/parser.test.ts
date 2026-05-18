@@ -155,6 +155,12 @@ describe("parseQueryOutput — edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("fallbackLabel", () => {
+  it("extracts last segment from dotted fetch type", () => {
+    const label = fallbackLabel('fetch dt.entity.generic.detection | filter ...');
+    assert.ok(!label.startsWith("dt "), `should not start with 'dt', got: ${label}`);
+    assert.ok(label.includes("detection"), `got: ${label}`);
+  });
+
   it("produces fetch type + filter values", () => {
     const label = fallbackLabel('fetch logs | filter loglevel=="ERROR" | filter service=="checkout"');
     assert.ok(label.includes("logs"), `got: ${label}`);

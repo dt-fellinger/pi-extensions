@@ -1,20 +1,20 @@
 /**
  * Label generator for Query Tree nodes.
  *
- * Generates short (≤6-word) labels describing what changed between
- * consecutive queries. Uses a model call when possible, falls back to
- * a deterministic label derived from the query text.
+ * Tries to call claude-haiku via the Anthropic API for a readable
+ * action-oriented label. Falls back to a deterministic extractor when
+ * no API key is available or the call fails.
  *
  * Concurrency limits:
  *   - max 3 concurrent label jobs
  *   - max 25 pending jobs in queue
- *   - 3 second timeout per job
+ *   - 8 second timeout per job (real API calls need more breathing room)
  *   - queue overflow → immediate fallback label
  */
 
 const MAX_CONCURRENT = 3;
 const MAX_QUEUED = 25;
-const TIMEOUT_MS = 3000;
+const TIMEOUT_MS = 8000;
 
 export type LabelCallback = (label: string, state: "ready" | "fallback") => void;
 
@@ -32,7 +32,8 @@ const queue: LabelJob[] = [];
  * Request a label for a query node.
  *
  * contextHint is the text of the user's message that prompted the query.
- * It is incorporated into the fallback label when the DQL alone is ambiguous.
+ * The callback receives the final label and whether it came from a model
+ * ("ready") or the deterministic fallback ("fallback").
  */
 export function requestLabel(
   currentQuery: string,
@@ -76,43 +77,130 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Model call
+// ---------------------------------------------------------------------------
+
 /**
- * Attempt to generate a label using a model. If the model isn't available
- * or the call fails, throws so the caller can use the fallback.
+ * Call the Anthropic API to generate a concise action-oriented label.
  *
- * Model preference order per spec:
- *   1. claude-haiku-4-5
- *   2. claude-3-5-haiku-20241022
- *   3. any available model (stub — not yet wired to a live provider)
- *
- * NOTE: Pi extensions don't expose a direct "call a model" API. This is
- * implemented as a stub that always throws, causing the fallback label to
- * be used. A future enhancement can wire this to fetch() against the
- * provider's base URL using the API key from ctx.modelRegistry.
+ * Model preference: claude-haiku-4-5 → claude-3-5-haiku-20241022
+ * Reads ANTHROPIC_API_KEY from the environment.
+ * Throws on failure so the caller falls back to the deterministic label.
  */
-async function generateLabel(_job: LabelJob): Promise<string> {
-  // Stub: always fall through to fallback.
-  throw new Error("model label generation not yet implemented");
+async function generateLabel(job: LabelJob): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
+
+  const prompt = buildPrompt(job);
+
+  for (const model of ["claude-haiku-4-5", "claude-3-5-haiku-20241022"]) {
+    try {
+      const text = await callAnthropic(apiKey, model, prompt);
+      if (text) return sanitizeLabel(text);
+    } catch {
+      // Try next model.
+    }
+  }
+
+  throw new Error("all models failed");
+}
+
+async function callAnthropic(apiKey: string, model: string, prompt: string): Promise<string> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 30,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const data = await response.json() as {
+    content?: Array<{ type: string; text?: string }>;
+  };
+  const text = data.content?.find((c) => c.type === "text")?.text?.trim();
+  if (!text) throw new Error("empty response");
+  return text;
 }
 
 /**
- * Deterministic fallback label for a query node.
+ * Build the label generation prompt.
+ *
+ * The prompt is designed to produce short, action-oriented labels that
+ * match what a human analyst would write — "Get all detection findings",
+ * "Count ERROR logs by service", "Show span latency for checkout".
+ */
+function buildPrompt(job: LabelJob): string {
+  const lines: string[] = [
+    "You label steps in an observability/security investigation.",
+    "",
+  ];
+
+  if (job.contextHint) {
+    lines.push(`User's request: "${job.contextHint}"`);
+  }
+
+  lines.push(`DQL query: "${job.currentQuery}"`);
+
+  if (job.previousQuery) {
+    lines.push(`Previous query: "${job.previousQuery}"`);
+  }
+
+  lines.push(
+    "",
+    "Write a 4-6 word label that captures what the user is trying to find out.",
+    "Start with an action verb: Get, Find, Count, Show, List, Fetch.",
+    "Name the specific subject (findings, ERROR logs, span duration, etc.).",
+    "Omit: time ranges, tenant names, the word DQL, the word query.",
+    job.previousQuery
+      ? "Focus on what is new or different compared to the previous query."
+      : "",
+    "Reply with ONLY the label, no punctuation, no quotes.",
+  );
+
+  return lines.filter(Boolean).join("\n");
+}
+
+/** Strip quotes, trailing punctuation, and enforce max length. */
+function sanitizeLabel(raw: string): string {
+  return raw
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/[.!?]+$/, "")
+    .trim()
+    .slice(0, 40);
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic fallback
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic fallback label used when the model call is unavailable or fails.
  *
  * Priority:
- *   1. User's question (contextHint) — most readable, always preferred.
- *      Key nouns are extracted from the question and joined with the
- *      fetch type and any aggregation keyword from the DQL.
- *   2. DQL content — used only when no context hint is available.
- *      Extracts fetch type, filter comparison values, and aggregation.
+ *   1. User's question (contextHint) — reconstruct a readable phrase.
+ *   2. DQL content — fetch type, filter values, aggregation.
  */
 export function fallbackLabel(query: string, contextHint?: string): string {
   const q = query.trim();
 
-  // Fetch type from DQL ("logs", "bizevents", "spans", etc.)
-  const fetchMatch = q.match(/^fetch\s+(\w+)/i);
-  const fetchType = fetchMatch ? fetchMatch[1]! : null;
+  // Fetch type — handle dotted names like dt.entity.generic.detection
+  // by taking the last meaningful segment.
+  const fetchMatch = q.match(/^fetch\s+([\w.]+)/i);
+  const rawFetchType = fetchMatch ? fetchMatch[1]! : null;
+  const fetchType = rawFetchType
+    ? rawFetchType.split(".").filter((s) => !["dt", "entity"].includes(s)).pop() ?? rawFetchType
+    : null;
 
-  // Aggregation keyword from DQL
+  // Aggregation keyword
   const aggregation =
     /\bcount\s*\(/i.test(q) ? "count" :
     /\btimeseries\b/i.test(q) ? "timeseries" :
@@ -120,10 +208,9 @@ export function fallbackLabel(query: string, contextHint?: string): string {
     null;
 
   if (contextHint) {
-    // Build label from the user's question first.
     const hintWords = extractHintKeywords(contextHint);
     const parts: string[] = [];
-    if (fetchType) parts.push(fetchType);
+    if (fetchType && !hintWords.includes(fetchType)) parts.push(fetchType);
     for (const word of hintWords) {
       if (!parts.includes(word)) parts.push(word);
       if (parts.length >= 4) break;
@@ -135,7 +222,7 @@ export function fallbackLabel(query: string, contextHint?: string): string {
     }
   }
 
-  // No context hint — fall back to DQL-derived content.
+  // No context hint — DQL-only extraction.
   const parts: string[] = [];
   if (fetchType) parts.push(fetchType);
 
@@ -166,8 +253,8 @@ export function fallbackLabel(query: string, contextHint?: string): string {
 }
 
 /**
- * Extract meaningful keywords from a user's question for use in labels.
- * Strips stopwords and short words.
+ * Extract the most meaningful words from a user's question.
+ * Strips stopwords, short words, and noise tokens.
  */
 function extractHintKeywords(hint: string): string[] {
   const STOPWORDS = new Set([
@@ -176,12 +263,15 @@ function extractHintKeywords(hint: string): string[] {
     "list", "give", "me", "us", "can", "do", "does", "there", "by", "with",
     "from", "that", "this", "all", "any", "have", "has", "been", "be", "on",
     "query", "fetch", "run", "execute", "using", "check", "look", "please",
+    "use", "dql", "now", "also", "then", "just", "some", "see", "i", "my",
+    "its", "their", "our", "want", "would", "like", "need", "try", "let",
+    "last", "past", "next", "over", "ago",
   ]);
 
   return hint
     .toLowerCase()
     .replace(/[^a-z0-9\s\-_.]/g, " ")
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w) && !/^\d+$/.test(w))
     .slice(0, 5);
 }
