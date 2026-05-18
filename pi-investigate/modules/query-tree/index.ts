@@ -48,6 +48,7 @@ import { QueryTreeTracker } from "./tracker.js";
 import { TreeOverlay } from "./tree-overlay.js";
 import { TableViewer } from "./table-viewer.js";
 import { cleanupOrphanedCache } from "./result-store.js";
+import { resolveLabelModel } from "./label-generator.js";
 
 const ENTRY_TYPE = "investigate:query-tree:node";
 
@@ -136,12 +137,10 @@ export function initQueryTreeModule(
   pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
     const contextHint = extractLastUserMessage(ctx);
-    // Resolve the Anthropic API key from pi's own credential store so the
-    // label generator works without ANTHROPIC_API_KEY in the environment.
-    const apiKey = await ctx.modelRegistry
-      .getApiKeyForProvider("anthropic")
-      .catch(() => process.env.ANTHROPIC_API_KEY);
-    tracker.onToolCall(event.toolCallId, event.input.command ?? "", contextHint, apiKey);
+    // Pick the cheapest available model from pi's own registry — works with
+    // any provider the user has configured, not just Anthropic.
+    const modelInfo = await resolveLabelModel(ctx.modelRegistry).catch(() => null);
+    tracker.onToolCall(event.toolCallId, event.input.command ?? "", contextHint, modelInfo);
   });
 
   pi.on("tool_result", async (event) => {

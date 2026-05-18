@@ -14,7 +14,7 @@ import type { InvestigateConfig, InvestigateEventBus, InvestigationNode, Investi
 import { addNode, getNode } from "../../core/state.js";
 import { resolveCacheDir } from "../../core/config.js";
 import { detectDtctlQuery, parseQueryOutput } from "./parser.js";
-import { fallbackLabel, requestLabel } from "./label-generator.js";
+import { fallbackLabel, requestLabel, type LabelModelInfo } from "./label-generator.js";
 import { writeCachedResult } from "./result-store.js";
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ interface PendingQuery {
   queryFile?: string;
   parentNodeId: string | null;
   contextHint: string | undefined;
-  apiKey: string | undefined;
+  modelInfo: LabelModelInfo | null;
   startedAt: number;
 }
 
@@ -54,7 +54,7 @@ export class QueryTreeTracker {
    * Called from tool_call. Records a pending query if the bash command is
    * a supported dtctl query invocation.
    */
-  onToolCall(toolCallId: string, command: string, contextHint?: string, apiKey?: string): void {
+  onToolCall(toolCallId: string, command: string, contextHint?: string, modelInfo?: LabelModelInfo | null): void {
     const detected = detectDtctlQuery(command);
     if (!detected) return;
 
@@ -65,7 +65,7 @@ export class QueryTreeTracker {
       queryFile: detected.queryFile,
       parentNodeId: this.selectedNodeId,
       contextHint,
-      apiKey,
+      modelInfo: modelInfo ?? null,
       startedAt: Date.now(),
     });
   }
@@ -191,7 +191,7 @@ export class QueryTreeTracker {
 
     // Request a label asynchronously.
     const previousQuery = this.findPreviousQuery(pending.parentNodeId);
-    requestLabel(query || "manual marker", previousQuery, pending.contextHint, pending.apiKey, (label, labelState) => {
+    requestLabel(query || "manual marker", previousQuery, pending.contextHint, pending.modelInfo, (label, labelState) => {
       this.updateNodeLabel(nodeId, label, labelState);
     });
   }
