@@ -66,8 +66,11 @@ export default function (pi: ExtensionAPI) {
   // ---------------------------------------------------------------------------
 
   if (config.modules["query-tree"].enabled) {
-    const tracker = initQueryTreeModule(pi, state, events, config);
+    const { tracker, resetLabelModel } = initQueryTreeModule(pi, state, events, config);
     registerQueryTreeCommands(pi, state, events, config, tracker);
+    // Reset cached model selection at the start of each session so credential
+    // changes are picked up without requiring a full restart.
+    pi.on("session_start", async () => resetLabelModel());
   }
 
   // Status display — wire once. Uses getCtx() so it always has a live ctx.

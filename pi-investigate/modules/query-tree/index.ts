@@ -133,13 +133,24 @@ export function initQueryTreeModule(
     },
   );
 
+  // Resolve the label model once at startup. The model registry is stable
+  // for the lifetime of a session — no need to re-resolve on every tool call.
+  let labelModelInfo: import("./label-generator.js").LabelModelInfo | null = null;
+  let labelModelResolved = false;
+
+  const ensureLabelModel = async (registry: import("@earendil-works/pi-coding-agent").ModelRegistry) => {
+    if (!labelModelResolved) {
+      labelModelResolved = true;
+      labelModelInfo = await resolveLabelModel(registry).catch(() => null);
+    }
+    return labelModelInfo;
+  };
+
   // Listen for bash tool calls and results.
   pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
     const contextHint = extractLastUserMessage(ctx);
-    // Pick the cheapest available model from pi's own registry — works with
-    // any provider the user has configured, not just Anthropic.
-    const modelInfo = await resolveLabelModel(ctx.modelRegistry).catch(() => null);
+    const modelInfo = await ensureLabelModel(ctx.modelRegistry);
     tracker.onToolCall(event.toolCallId, event.input.command ?? "", contextHint, modelInfo);
   });
 
@@ -149,12 +160,15 @@ export function initQueryTreeModule(
     tracker.onToolResult(event.toolCallId, stdout, event.isError ?? false);
   });
 
-  return tracker;
-}
+  // Expose a reset so the entry point can clear the cache on session_start,
+  // ensuring a fresh credential check if the user reconfigures a provider.
+  const resetLabelModel = () => {
+    labelModelResolved = false;
+    labelModelInfo = null;
+  };
 
-// ---------------------------------------------------------------------------
-// Commands
-// ---------------------------------------------------------------------------
+  return { tracker, resetLabelModel };
+}
 
 export function registerQueryTreeCommands(
   pi: ExtensionAPI,
