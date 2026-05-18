@@ -54,15 +54,30 @@ export function detectDtctlQuery(command: string): DetectedQuery | null {
     return { query: null, fileQuery: true, queryFile: fileMatch[2] };
   }
 
-  // Inline query: first unquoted or quoted argument that isn't a flag.
-  // Handles: dtctl query "fetch logs | ..." -o json --plain
-  const inlineMatch = rest.match(
-    /\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^-\s]\S*))/,
+  // Strip known flag-value pairs so we don't mistake option values for the query.
+  const stripped = rest.replace(
+    /\s+(?:-e|--env|-o|--output|-p|--profile|--timeout)(?:=\S+|\s+\S+)/g,
+    "",
   );
-  if (inlineMatch) {
-    const q = inlineMatch[1] ?? inlineMatch[2] ?? inlineMatch[3] ?? null;
-    return { query: q, fileQuery: false };
+
+  // Find the first quoted string (the DQL query is always quoted in practice).
+  // Scan left-to-right so an outer single-quote isn't confused with double-quotes inside it.
+  const firstQuoteIdx = stripped.search(/["']/);
+  if (firstQuoteIdx !== -1) {
+    const quoteChar = stripped[firstQuoteIdx];
+    const re = quoteChar === '"'
+      ? /"((?:[^"\\]|\\[\s\S])*)"/
+      : /'((?:[^'\\]|\\[\s\S])*)'/;
+    const m = stripped.slice(firstQuoteIdx).match(re);
+    if (m) return { query: m[1] ?? null, fileQuery: false };
   }
+
+  // No quoted string — take the first remaining non-flag word.
+  const wordMatch = stripped.trimStart().match(/^([^-\s]\S*)/);
+  if (wordMatch) return { query: wordMatch[1] ?? null, fileQuery: false };
+
+  // Command present but query text not recoverable.
+  return { query: null, fileQuery: false };
 
   // Command present but query text not recoverable.
   return { query: null, fileQuery: false };

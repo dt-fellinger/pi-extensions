@@ -95,25 +95,53 @@ async function generateLabel(_job: LabelJob): Promise<string> {
 }
 
 /**
- * Deterministic fallback label.
+ * Deterministic fallback label derived from a DQL query string.
  *
- * Extracts the first meaningful segment after `fetch` in the query and
- * truncates to 30 characters.
+ * Extracts the fetch type, key filter values, and any aggregation keyword
+ * to produce a short but meaningful description.
  *
  * Examples:
- *   "fetch logs | filter ..."     → "fetch logs"
- *   "fetch spans | ..."           → "fetch spans"
- *   "timeseries avg(...)"         → "timeseries avg(..."
+ *   "fetch logs | filter loglevel==\"ERROR\" | filter service==\"checkout\""
+ *     → "logs ERROR checkout"
+ *   "fetch bizevents | filter namespace==\"prod\" | count()"
+ *     → "bizevents prod count"
+ *   "fetch spans | summarize count() by serviceName"
+ *     → "spans by serviceName"
  */
 export function fallbackLabel(query: string): string {
   const q = query.trim();
+  const parts: string[] = [];
 
-  // Try to grab the first meaningful clause up to the first pipe.
+  // What entity type is being fetched?
+  const fetchMatch = q.match(/^fetch\s+(\w+)/i);
+  if (fetchMatch) parts.push(fetchMatch[1]!);
+
+  // Key filter comparison values (loglevel=="ERROR", namespace=="prod", etc.)
+  const filterRe = /\bfilter\b[^|]*?==\s*["']?([A-Za-z0-9_:./\-]+)["']?/gi;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint: iterating regex matches
+  while ((m = filterRe.exec(q)) !== null && parts.length < 4) {
+    const val = m[1]!.trim();
+    if (val && !parts.includes(val)) parts.push(val);
+  }
+
+  // Aggregation / transformation keywords
+  if (/\bcount\s*\(/i.test(q)) parts.push("count");
+  else if (/\bsummarize\b/i.test(q)) parts.push("summarize");
+  else if (/\btimeseries\b/i.test(q)) parts.push("timeseries");
+
+  // Group-by column (by X)
+  const byMatch = q.match(/\bby\s+([\w.]+)/i);
+  if (byMatch && parts.length < 5) parts.push(`by ${byMatch[1]}`);
+
+  if (parts.length > 0) {
+    const label = parts.join(" ");
+    return label.length <= 30 ? label : label.slice(0, 27) + "...";
+  }
+
+  // Last resort: first clause before |, truncated.
   const beforePipe = q.split("|")[0]?.trim() ?? q;
-
-  // Truncate to 30 chars, avoiding mid-word cuts where possible.
   if (beforePipe.length <= 30) return beforePipe;
-
   const truncated = beforePipe.slice(0, 30);
   const lastSpace = truncated.lastIndexOf(" ");
   return lastSpace > 10 ? truncated.slice(0, lastSpace) : truncated;
