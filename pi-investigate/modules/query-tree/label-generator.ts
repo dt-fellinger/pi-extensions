@@ -22,6 +22,7 @@ interface LabelJob {
   currentQuery: string;
   previousQuery: string | null;
   contextHint: string | undefined;
+  apiKey: string | undefined;
   callback: LabelCallback;
 }
 
@@ -39,9 +40,10 @@ export function requestLabel(
   currentQuery: string,
   previousQuery: string | null,
   contextHint: string | undefined,
+  apiKey: string | undefined,
   callback: LabelCallback,
 ): void {
-  const job: LabelJob = { currentQuery, previousQuery, contextHint, callback };
+  const job: LabelJob = { currentQuery, previousQuery, contextHint, apiKey, callback };
 
   if (activeCount < MAX_CONCURRENT) {
     runJob(job);
@@ -89,8 +91,8 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * Throws on failure so the caller falls back to the deterministic label.
  */
 async function generateLabel(job: LabelJob): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
+  const apiKey = job.apiKey ?? process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("no Anthropic API key available");
 
   const prompt = buildPrompt(job);
 
@@ -140,33 +142,45 @@ async function callAnthropic(apiKey: string, model: string, prompt: string): Pro
  */
 function buildPrompt(job: LabelJob): string {
   const lines: string[] = [
-    "You label steps in an observability/security investigation.",
+    "You are writing a short label for one step in a Dynatrace investigation.",
+    "",
+    "Rules:",
+    "- 3 to 5 words maximum",
+    "- Start with an action verb: Get, Find, Count, List, Show, Fetch",
+    "- Name the data entity being queried (findings, logs, spans, events, etc.)",
+    "- Include the most important qualifier if there is one (a status, a namespace, a service)",
+    "- Do NOT mention: time ranges, hours, days, tenant names, the word DQL, or conversational words like 'again' or 'now'",
+    "- Reply with ONLY the label — no explanation, no quotes, no punctuation",
+    "",
+    "Examples of good labels:",
+    "  Get detection findings",
+    "  Count ERROR logs by service",
+    "  List security violations prod",
+    "  Show span duration checkout",
+    "  Fetch host CPU metrics",
     "",
   ];
 
   if (job.contextHint) {
-    lines.push(`User's request: "${job.contextHint}"`);
+    lines.push(`What the user asked: "${job.contextHint.slice(0, 300)}"`);
   }
 
-  lines.push(`DQL query: "${job.currentQuery}"`);
+  const shortQuery = job.currentQuery.length > 200
+    ? job.currentQuery.slice(0, 200) + "..."
+    : job.currentQuery;
+  lines.push(`DQL query: "${shortQuery}"`);
 
   if (job.previousQuery) {
-    lines.push(`Previous query: "${job.previousQuery}"`);
+    const shortPrev = job.previousQuery.length > 150
+      ? job.previousQuery.slice(0, 150) + "..."
+      : job.previousQuery;
+    lines.push(`Previous query: "${shortPrev}"`);
+    lines.push("Focus on what is new or different compared to the previous query.");
   }
 
-  lines.push(
-    "",
-    "Write a 4-6 word label that captures what the user is trying to find out.",
-    "Start with an action verb: Get, Find, Count, Show, List, Fetch.",
-    "Name the specific subject (findings, ERROR logs, span duration, etc.).",
-    "Omit: time ranges, tenant names, the word DQL, the word query.",
-    job.previousQuery
-      ? "Focus on what is new or different compared to the previous query."
-      : "",
-    "Reply with ONLY the label, no punctuation, no quotes.",
-  );
+  lines.push("", "Label:");
 
-  return lines.filter(Boolean).join("\n");
+  return lines.join("\n");
 }
 
 /** Strip quotes, trailing punctuation, and enforce max length. */
@@ -265,7 +279,8 @@ function extractHintKeywords(hint: string): string[] {
     "query", "fetch", "run", "execute", "using", "check", "look", "please",
     "use", "dql", "now", "also", "then", "just", "some", "see", "i", "my",
     "its", "their", "our", "want", "would", "like", "need", "try", "let",
-    "last", "past", "next", "over", "ago",
+    "last", "past", "next", "over", "ago", "again", "same", "more", "too",
+    "tenant", "environment", "env",
   ]);
 
   return hint

@@ -136,7 +136,12 @@ export function initQueryTreeModule(
   pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
     const contextHint = extractLastUserMessage(ctx);
-    tracker.onToolCall(event.toolCallId, event.input.command ?? "", contextHint);
+    // Resolve the Anthropic API key from pi's own credential store so the
+    // label generator works without ANTHROPIC_API_KEY in the environment.
+    const apiKey = await ctx.modelRegistry
+      .getApiKeyForProvider("anthropic")
+      .catch(() => process.env.ANTHROPIC_API_KEY);
+    tracker.onToolCall(event.toolCallId, event.input.command ?? "", contextHint, apiKey);
   });
 
   pi.on("tool_result", async (event) => {
